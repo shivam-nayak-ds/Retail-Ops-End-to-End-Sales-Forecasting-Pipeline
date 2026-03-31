@@ -1,0 +1,38 @@
+"
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+venv/
+env/
+.env
+.venv/
+env.bak/
+venv.bak/
+
+# Artifacts & Data (Important: Big data should stay local or in DVC)
+artifacts/*
+!artifacts/.gitkeep
+logs/*
+!logs/.gitkeep
+*.csv
+*.xlsx
+*.pkl
+*.model
+
+# IDEs
+.vscode/
+.idea/
+
+# Testing
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+
+# OS files
+.DS_Store
+Thumbs.db
+" | Out-File -FilePath .gitignore -Encoding utf-8
