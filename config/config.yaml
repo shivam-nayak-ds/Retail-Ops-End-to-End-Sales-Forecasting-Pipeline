@@ -1,0 +1,94 @@
+# ─────────────────────────────────────────────────────────────
+#  Retail-Ops Sales Forecasting Pipeline — Main Config
+# ─────────────────────────────────────────────────────────────
+
+project:
+  name: "Retail-Ops Sales Forecasting Pipeline"
+  version: "1.0.0"
+  author: "Shivam Nayak"
+
+# ── Data Ingestion ────────────────────────────────────────────
+data_ingestion:
+  raw_data_path: "data/raw/train.csv"
+  store_data_path: "data/raw/store.csv"
+  processed_dir: "data/processed"
+  train_file: "data/processed/train.parquet"
+  test_file: "data/processed/test.parquet"
+  train_split_ratio: 0.8
+  date_column: "Date"
+  target_column: "Sales"
+
+# ── Data Validation ───────────────────────────────────────────
+data_validation:
+  validation_report_dir: "docs/validation_reports"
+  drift_report_file: "docs/validation_reports/drift_report.html"
+  required_columns:
+    - Store
+    - DayOfWeek
+    - Date
+    - Sales
+    - Customers
+    - Open
+    - Promo
+    - StateHoliday
+    - SchoolHoliday
+  null_threshold: 0.05          # max 5% nulls allowed per column
+  sales_min: 0
+  sales_max: 50000
+
+# ── Data Transformation ───────────────────────────────────────
+data_transformation:
+  preprocessor_path: "models/artifacts/preprocessor.pkl"
+  lag_days: [7, 14, 28]
+  rolling_windows: [7, 30]
+  cyclical_features:
+    - DayOfWeek
+    - Month
+    - WeekOfYear
+
+# ── Model Training ────────────────────────────────────────────
+model_trainer:
+  model_dir: "models/artifacts"
+  lgbm_model_path: "models/artifacts/lgbm_model.pkl"
+  xgb_model_path: "models/artifacts/xgb_model.pkl"
+  ensemble_model_path: "models/artifacts/ensemble_model.pkl"
+  cv_splits: 5
+  random_state: 42
+
+# ── Model Evaluation ──────────────────────────────────────────
+model_evaluation:
+  metrics_dir: "docs/evaluation"
+  plots_dir: "docs/evaluation/plots"
+  mape_threshold: 15.0          # MAPE must be below 15% to pass
+  rmse_threshold: 1500.0
+
+# ── MLflow ────────────────────────────────────────────────────
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "retail-sales-forecasting"
+  model_name: "retail-forecaster"
+  registered_model_stage: "Production"
+
+# ── Monitoring ────────────────────────────────────────────────
+monitoring:
+  reference_data_path: "data/processed/train.parquet"
+  drift_report_dir: "docs/monitoring"
+  drift_threshold: 0.15
+  prediction_log_path: "data/monitoring/prediction_logs.parquet"
+
+# ── API ───────────────────────────────────────────────────────
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 2
+  title: "Retail Sales Forecasting API"
+  version: "1.0.0"
+
+# ── GenAI / RAG ───────────────────────────────────────────────
+genai:
+  vector_store_path: "models/vector_store"
+  embedding_model: "text-embedding-3-small"
+  llm_model: "gpt-4o-mini"
+  top_k_results: 5
+  chunk_size: 512
+  chunk_overlap: 64

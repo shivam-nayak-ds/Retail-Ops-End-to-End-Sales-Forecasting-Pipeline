@@ -1,0 +1,87 @@
+# ─────────────────────────────────────────────────────────────
+#  Retail-Ops Sales Forecasting Pipeline — Data Schema
+#  Based on Rossmann Store Sales Dataset (Kaggle)
+#  Used by Data Validation component (Phase 3)
+# ─────────────────────────────────────────────────────────────
+
+# Raw training data schema
+train_schema:
+  Store:
+    dtype: int64
+    nullable: false
+    min: 1
+    max: 1115
+  DayOfWeek:
+    dtype: int64
+    nullable: false
+    min: 1
+    max: 7
+  Date:
+    dtype: object          # parsed as datetime
+    nullable: false
+  Sales:
+    dtype: int64
+    nullable: false
+    min: 0
+    max: 50000
+  Customers:
+    dtype: int64
+    nullable: false
+    min: 0
+  Open:
+    dtype: int64
+    nullable: false
+    allowed_values: [0, 1]
+  Promo:
+    dtype: int64
+    nullable: false
+    allowed_values: [0, 1]
+  StateHoliday:
+    dtype: object
+    nullable: false
+    allowed_values: ["0", "a", "b", "c"]
+  SchoolHoliday:
+    dtype: int64
+    nullable: false
+    allowed_values: [0, 1]
+
+# Store metadata schema
+store_schema:
+  Store:
+    dtype: int64
+    nullable: false
+  StoreType:
+    dtype: object
+    nullable: false
+    allowed_values: ["a", "b", "c", "d"]
+  Assortment:
+    dtype: object
+    nullable: false
+    allowed_values: ["a", "b", "c"]
+  CompetitionDistance:
+    dtype: float64
+    nullable: true
+  CompetitionOpenSinceMonth:
+    dtype: float64
+    nullable: true
+  CompetitionOpenSinceYear:
+    dtype: float64
+    nullable: true
+  Promo2:
+    dtype: int64
+    nullable: false
+    allowed_values: [0, 1]
+  Promo2SinceWeek:
+    dtype: float64
+    nullable: true
+  Promo2SinceYear:
+    dtype: float64
+    nullable: true
+  PromoInterval:
+    dtype: object
+    nullable: true
+
+# Target column
+target:
+  column: Sales
+  dtype: float64
