@@ -1,94 +1,36 @@
-# ─────────────────────────────────────────────────────────────
-#  Retail-Ops Sales Forecasting Pipeline — Main Config
-# ─────────────────────────────────────────────────────────────
+artifacts_root: artifacts
 
-project:
-  name: "Retail-Ops Sales Forecasting Pipeline"
-  version: "1.0.0"
-  author: "Shivam Nayak"
-
-# ── Data Ingestion ────────────────────────────────────────────
 data_ingestion:
-  raw_data_path: "data/raw/train.csv"
-  store_data_path: "data/raw/store.csv"
-  processed_dir: "data/processed"
-  train_file: "data/processed/train.parquet"
-  test_file: "data/processed/test.parquet"
-  train_split_ratio: 0.8
-  date_column: "Date"
-  target_column: "Sales"
+  root_dir: artifacts/data_ingestion
+  train_csv: data/raw/train.csv
+  store_csv: data/raw/store.csv
+  local_data_file: artifacts/data_ingestion/raw_data.parquet
+  train_data_file: artifacts/data_ingestion/train.parquet
+  test_data_file: artifacts/data_ingestion/test.parquet
 
-# ── Data Validation ───────────────────────────────────────────
 data_validation:
-  validation_report_dir: "docs/validation_reports"
-  drift_report_file: "docs/validation_reports/drift_report.html"
-  required_columns:
-    - Store
-    - DayOfWeek
-    - Date
-    - Sales
-    - Customers
-    - Open
-    - Promo
-    - StateHoliday
-    - SchoolHoliday
-  null_threshold: 0.05          # max 5% nulls allowed per column
-  sales_min: 0
-  sales_max: 50000
+  root_dir: artifacts/data_validation
+  status_file: artifacts/data_validation/status.txt
+  schema_path: config/schema.yaml
+  train_data_path: artifacts/data_ingestion/train.parquet
+  required_columns: ["Store", "DayOfWeek", "Date", "Sales", "Customers", "Open", "Promo", "StateHoliday", "SchoolHoliday", "StoreType", "Assortment", "CompetitionDistance", "CompetitionOpenSinceMonth", "CompetitionOpenSinceYear", "Promo2", "Promo2SinceWeek", "Promo2SinceYear", "PromoInterval"]
 
-# ── Data Transformation ───────────────────────────────────────
 data_transformation:
-  preprocessor_path: "models/artifacts/preprocessor.pkl"
-  lag_days: [7, 14, 28]
-  rolling_windows: [7, 30]
-  cyclical_features:
-    - DayOfWeek
-    - Month
-    - WeekOfYear
+  root_dir: artifacts/data_transformation
+  transformed_train_file: artifacts/data_transformation/train_transformed.parquet
+  transformed_test_file: artifacts/data_transformation/test_transformed.parquet
+  preprocessor_obj_file: artifacts/data_transformation/preprocessor.pkl
 
-# ── Model Training ────────────────────────────────────────────
 model_trainer:
-  model_dir: "models/artifacts"
-  lgbm_model_path: "models/artifacts/lgbm_model.pkl"
-  xgb_model_path: "models/artifacts/xgb_model.pkl"
-  ensemble_model_path: "models/artifacts/ensemble_model.pkl"
-  cv_splits: 5
-  random_state: 42
+  root_dir: artifacts/model_trainer
+  model_path: artifacts/model_trainer/model.pkl
+  base_accuracy_threshold: 0.6
 
-# ── Model Evaluation ──────────────────────────────────────────
 model_evaluation:
-  metrics_dir: "docs/evaluation"
-  plots_dir: "docs/evaluation/plots"
-  mape_threshold: 15.0          # MAPE must be below 15% to pass
-  rmse_threshold: 1500.0
+  root_dir: artifacts/model_evaluation
+  metrics_file: artifacts/model_evaluation/metrics.json
 
-# ── MLflow ────────────────────────────────────────────────────
-mlflow:
-  tracking_uri: "http://localhost:5000"
-  experiment_name: "retail-sales-forecasting"
-  model_name: "retail-forecaster"
-  registered_model_stage: "Production"
-
-# ── Monitoring ────────────────────────────────────────────────
-monitoring:
-  reference_data_path: "data/processed/train.parquet"
-  drift_report_dir: "docs/monitoring"
-  drift_threshold: 0.15
-  prediction_log_path: "data/monitoring/prediction_logs.parquet"
-
-# ── API ───────────────────────────────────────────────────────
-api:
-  host: "0.0.0.0"
-  port: 8000
-  workers: 2
-  title: "Retail Sales Forecasting API"
-  version: "1.0.0"
-
-# ── GenAI / RAG ───────────────────────────────────────────────
-genai:
-  vector_store_path: "models/vector_store"
-  embedding_model: "text-embedding-3-small"
-  llm_model: "gpt-4o-mini"
-  top_k_results: 5
-  chunk_size: 512
-  chunk_overlap: 64
+model_registry:
+  root_dir: artifacts/model_registry
+  model_name: "RetailSalesForecastingModel"
+  status_file: artifacts/model_registry/status.txt

@@ -5,7 +5,7 @@ Central place so nothing is ever hardcoded in component files.
 from pathlib import Path
 
 # ── Root Paths ────────────────────────────────────────────────
-ROOT_DIR = Path(__file__).resolve().parents[4]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 CONFIG_DIR = ROOT_DIR / "config"
 DATA_DIR = ROOT_DIR / "data"
 MODELS_DIR = ROOT_DIR / "models"

@@ -158,22 +158,14 @@ cython_debug/
 .vscode/
 
 # Project Specific - Retail Ops Pipeline
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-models/*
-!models/.gitkeep
-artifacts/*
-!artifacts/.gitkeep
-logs/*
-!logs/.gitkeep
-
-# MLflow
+data/raw/train.csv
+data/raw/store.csv
+data/raw/test.csv
+data/processed/
+artifacts/
 mlruns/
-mlruns.db
-mlflow.db
-outputs/
+logs/
+*.pkl
 
 # OS files
 .DS_Store
