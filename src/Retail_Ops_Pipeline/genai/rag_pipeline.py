@@ -35,57 +35,72 @@ class RetailRAGPipeline:
                 allow_dangerous_deserialization=True
             )
             
-            # 3. Initialize Groq LLM for analysis
+            # 3. Load Cross-Encoder for Re-ranking (Elite Step)
+            from sentence_transformers import CrossEncoder
+            self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+            
+            # 4. Initialize Groq LLM for analysis
             self.llm = ChatGroq(
                 model="llama-3.3-70b-versatile",
                 groq_api_key=os.getenv("GROQ_API_KEY"),
                 temperature=0.3
             )
             
-            # 4. Setup Prompt Template
+            # 5. Setup Prompt Template
+            from Retail_Ops_Pipeline.genai.prompt_templates import RAG_ANALYSIS_PROMPT
             self.prompt = PromptTemplate(
                 template=RAG_ANALYSIS_PROMPT,
                 input_variables=["prediction", "input_data", "context"]
             )
             
-            logger.info("RAG Pipeline components loaded successfully.")
+            logger.info("RAG Pipeline components (with Re-ranker) loaded successfully.")
 
         except Exception as e:
             logger.error(f"Initialization Failed: {str(e)}")
             raise
 
-    def get_context(self, store_id: int) -> str:
+    def get_context(self, store_id: int, query: str) -> str:
         """
-        Retrieves store-specific profile and relevant business rules from FAISS.
+        Retrieves store-specific profile and re-ranks them for maximum relevance.
         """
         try:
-            # Search for specific store profile
-            # Our indexing format: "Store {id}: ..."
-            query = f"Store {store_id}"
-            docs = self.vector_store.similarity_search(query, k=3)
+            # 1. Initial Retrieval (Get more docs for re-ranking)
+            initial_docs = self.vector_store.similarity_search(query, k=10)
             
-            context = "\n".join([doc.page_content for doc in docs])
+            # 2. Prepare pairs for Re-ranking [query, doc_text]
+            pairs = [[query, doc.page_content] for doc in initial_docs]
+            
+            # 3. Get relevance scores from Cross-Encoder
+            scores = self.reranker.predict(pairs)
+            
+            # 4. Sort documents by scores in descending order
+            reranked_docs = [doc for _, doc in sorted(zip(scores, initial_docs), key=lambda x: x[0], reverse=True)]
+            
+            # 5. Take top 3 most relevant docs
+            context = "\n".join([doc.page_content for doc in reranked_docs[:3]])
             return context
         except Exception as e:
-            logger.error(f"Context Retrieval Error: {str(e)}")
+            logger.error(f"Context Retrieval/Re-ranking Error: {str(e)}")
             return "No specific context found."
 
     def explain_forecast(self, input_data: Dict[str, Any], prediction: float) -> str:
         """
-        Orchestrates retrieval and generation to provide a business explanation.
+        Orchestrates retrieval, re-ranking, and generation.
         """
         try:
             store_id = input_data.get("Store")
             if not store_id:
                 return "Error: Store ID missing in input data."
 
-            # 1. Retrieve Contextual Knowledge
-            context = self.get_context(store_id)
+            # 1. Retrieve & Re-rank Knowledge
+            # We use a query that describes what we are looking for
+            query = f"Business rules and profile for Store {store_id}"
+            context = self.get_context(store_id, query)
             
             # 2. Prepare RAG Chain
             chain = self.prompt | self.llm
             
-            # 3. Generate Analysis via Gemini
+            # 3. Generate Analysis
             response = chain.invoke({
                 "prediction": f"{prediction:,.2f}",
                 "input_data": str(input_data),
