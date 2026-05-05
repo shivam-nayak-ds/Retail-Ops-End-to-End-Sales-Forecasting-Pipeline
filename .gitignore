@@ -158,14 +158,20 @@ cython_debug/
 .vscode/
 
 # Project Specific - Retail Ops Pipeline
-data/raw/train.csv
-data/raw/store.csv
-data/raw/test.csv
+data/raw/*.csv
 data/processed/
+data/monitoring/
+models/artifacts/
+models/vector_store/
 artifacts/
 mlruns/
 logs/
 *.pkl
+*.parquet
+*.log
+.env
+.venv/
+__pycache__/
 
 # OS files
 .DS_Store
