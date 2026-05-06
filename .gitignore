@@ -180,3 +180,16 @@ desktop.ini
 
 # User requested ignore
 scripts/load_to_mysql.py
+
+# Scratch / Debug files
+scratch/
+
+# Terraform state (CRITICAL - contains sensitive infra info)
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+
+# Docker volumes
+grafana_data/
+prometheus_data/

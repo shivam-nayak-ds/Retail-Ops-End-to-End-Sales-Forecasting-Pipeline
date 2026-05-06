@@ -47,3 +47,11 @@ class ModelRegistryConfig:
     status_file: Path
     model_path: Path
     metrics_path: Path
+
+@dataclass(frozen=True)
+class ModelMonitoringConfig:
+    root_dir: Path
+    report_file: Path
+    reference_data_path: Path
+    current_data_path: Path
+    drift_threshold: float

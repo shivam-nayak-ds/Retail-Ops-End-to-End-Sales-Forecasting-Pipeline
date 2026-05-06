@@ -12,7 +12,8 @@ from contextlib import asynccontextmanager
 from Retail_Ops_Pipeline.pipeline.prediction_pipeline import PredictionPipeline
 from Retail_Ops_Pipeline.genai.rag_pipeline import RetailRAGPipeline
 from Retail_Ops_Pipeline.utils.logger import get_logger
-from Retail_Ops_Pipeline.constants.config_entity import PREDICTION_LOG_PATH, TRAIN_PARQUET_PATH
+import shap
+from Retail_Ops_Pipeline.constants.config_entity import PREDICTION_LOG_PATH, TRAIN_PARQUET_PATH, PREPROCESSOR_PATH
 
 # Initialize logger 
 logger = get_logger("Retail_Ops_API")
@@ -34,9 +35,12 @@ class SalesForecastInput(BaseModel):
     @classmethod
     def validate_date(cls, value):
         try:
-            datetime.strptime(value, '%Y-%m-%d')
+            dt = datetime.strptime(value, '%Y-%m-%d')
+            if dt.year < 2013 or dt.year > 2026:
+                raise ValueError('Date must be between 2013 and 2026 for reliable forecasting.')
             return value
-        except ValueError:
+        except ValueError as e:
+            if 'between' in str(e): raise e
             raise ValueError('Date must be in YYYY-MM-DD format')
 
 class ForecastResponse(BaseModel):
@@ -44,6 +48,7 @@ class ForecastResponse(BaseModel):
     store_id: int
     prediction: float
     analysis: Optional[str] = None
+    explanation: Optional[Dict[str, float]] = None
     request_timestamp: datetime = Field(default_factory=datetime.now)
     model_info: Dict[str, str] = {"version": "2.1.0", "algorithm": "LightGBM"}
     latency: Optional[str] = None
@@ -60,6 +65,35 @@ class ForecastResponse(BaseModel):
             }
         }
     }
+
+class ForecastRangeInput(BaseModel):
+    store: int = Field(..., gt=0, description="Unique Store ID", example=1)
+    start_date: str = Field(..., description="Start Date (YYYY-MM-DD)")
+    days: int = Field(7, ge=1, le=30, description="Number of days to forecast (1-30)")
+    open_status: int = Field(1, ge=0, le=1, description="Default open status for the period")
+    promo_active: int = Field(0, ge=0, le=1, description="Default promo status for the period")
+
+    @field_validator('start_date')
+    @classmethod
+    def validate_start_date(cls, value):
+        try:
+            dt = datetime.strptime(value, '%Y-%m-%d')
+            if dt.year < 2013 or dt.year > 2026:
+                raise ValueError('Start Date must be between 2013 and 2026.')
+            return value
+        except ValueError as e:
+            if 'between' in str(e): raise e
+            raise ValueError('Date must be in YYYY-MM-DD format')
+
+class RangeForecastResponse(BaseModel):
+    status: str = "success"
+    store_id: int
+    start_date: str
+    end_date: str
+    daily_forecasts: List[Dict[str, Any]]
+    total_estimated_sales: float
+    strategic_analysis: Optional[str] = None
+    latency: Optional[str] = None
 
 # --- 2. Service Layer (Lifecycle Management) ---
 def load_latest_lags():
@@ -83,13 +117,32 @@ async def lifespan(app: FastAPI):
     Modern lifespan event for loading models and pipelines once on startup.
     """
     try:
+        # 1. Predictor
         app.state.predictor = PredictionPipeline()
+        
+        # 2. RAG Pipeline
         app.state.rag_pipeline = RetailRAGPipeline()
+        
+        # 3. Feature Store
         app.state.feature_store = load_latest_lags()
-        logger.info("Service Layer: Prediction, RAG, and Feature Store initialized successfully.")
+        
+        # 4. SHAP Explainer (Optional/Robust)
+        try:
+            model = app.state.predictor.model
+            app.state.explainer = shap.TreeExplainer(model)
+            logger.info("SHAP Explainer initialized.")
+        except Exception as se:
+            logger.warning(f"SHAP Initialization skipped: {se}")
+            app.state.explainer = None
+            
+        logger.info("Service Layer: All components initialized.")
         yield
     except Exception as e:
-        logger.error(f"Startup Failure: {str(e)}")
+        logger.error(f"Critical Startup Failure: {str(e)}")
+        # Provide null objects to prevent API crashes on attribute access
+        app.state.predictor = None
+        app.state.rag_pipeline = None
+        app.state.explainer = None
         yield
 
 # Initialize FastAPI App
@@ -116,7 +169,81 @@ def log_prediction(data: pd.DataFrame):
     except Exception as e:
         logger.error(f"Failed to log prediction data: {e}")
 
-# --- 4. The Elite Endpoint ---
+# --- 4. The Elite Endpoints ---
+@app.post("/forecast/range", response_model=RangeForecastResponse)
+async def forecast_range(data: ForecastRangeInput):
+    """
+    Strategic Endpoint: Performs Recursive Multi-Step Forecasting for a range of days.
+    """
+    start_time = time.time()
+    logger.info(f"Strategic request for Store: {data.store} for {data.days} days.")
+
+    try:
+        current_date = datetime.strptime(data.start_date, '%Y-%m-%d')
+        store_id = data.store
+        
+        # Initial Lags from Feature Store
+        if store_id not in app.state.feature_store:
+            current_lags = {'sales_lag_1': 0.0, 'sales_lag_7': 0.0, 'sales_lag_30': 0.0, 'sales_roll_mean_7': 0.0}
+        else:
+            current_lags = app.state.feature_store[store_id].copy()
+
+        daily_results = []
+        total_sales = 0.0
+        
+        # Recursive Forecasting Loop
+        for i in range(data.days):
+            iter_date = current_date + pd.Timedelta(days=i)
+            
+            # Prepare Input Features for this step
+            step_input = {
+                'Store': store_id,
+                'DayOfWeek': iter_date.weekday() + 1,
+                'Date': iter_date.strftime('%Y-%m-%d'),
+                'Open': data.open_status,
+                'Promo': data.promo_active,
+                'StateHoliday': '0',
+                'SchoolHoliday': 0,
+                'StoreType': 'c', 
+                'Assortment': 'a',
+                'CompetitionDistance': 1270.0
+            }
+            step_input.update(current_lags)
+            
+            # Predict this step
+            input_df = pd.DataFrame([step_input])
+            loop = asyncio.get_event_loop()
+            prediction = await loop.run_in_executor(None, app.state.predictor.predict, input_df)
+            pred_val = float(prediction[0])
+            
+            # Recursive Update
+            current_lags['sales_lag_1'] = pred_val
+            
+            daily_results.append({
+                "date": step_input['Date'],
+                "prediction": round(pred_val, 2)
+            })
+            total_sales += pred_val
+
+        # Strategic Analysis
+        analysis = await loop.run_in_executor(None, app.state.rag_pipeline.explain_forecast, {"Store": store_id, "period": f"{data.days} days"}, total_sales)
+
+        latency = f"{time.time() - start_time:.2f}s"
+        
+        return RangeForecastResponse(
+            store_id=store_id,
+            start_date=data.start_date,
+            end_date=daily_results[-1]['date'],
+            daily_forecasts=daily_results,
+            total_estimated_sales=round(total_sales, 2),
+            strategic_analysis=analysis,
+            latency=latency
+        )
+
+    except Exception as e:
+        logger.error(f"Range Inference Failure: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Strategic Engine Error: {str(e)}")
+
 @app.post("/forecast", response_model=ForecastResponse)
 async def forecast(data: SalesForecastInput, background_tasks: BackgroundTasks):
     """
@@ -158,6 +285,20 @@ async def forecast(data: SalesForecastInput, background_tasks: BackgroundTasks):
         
         # 2. Run AI Analysis with the ACTUAL prediction
         analysis = await loop.run_in_executor(None, app.state.rag_pipeline.explain_forecast, input_data, prediction_value)
+        
+        # 3. Calculate SHAP Explanation (Robust check)
+        top_features = {}
+        if app.state.explainer:
+            try:
+                shap_values = app.state.explainer.shap_values(input_df)
+                if isinstance(shap_values, list): shap_values = shap_values[0]
+                feature_names = input_df.columns.tolist()
+                importances = dict(zip(feature_names, shap_values[0]))
+                top_features = dict(sorted(importances.items(), key=lambda x: abs(x[1]), reverse=True)[:5])
+            except Exception as e:
+                logger.warning(f"SHAP computation failed: {e}")
+        else:
+            logger.warning("SHAP Explainer not available.")
 
         # Logging in background
         background_tasks.add_task(log_prediction, input_df)
@@ -168,6 +309,7 @@ async def forecast(data: SalesForecastInput, background_tasks: BackgroundTasks):
             store_id=store_id,
             prediction=round(prediction_value, 2),
             analysis=analysis,
+            explanation=top_features,
             latency=latency
         )
 

@@ -34,3 +34,10 @@ model_registry:
   root_dir: artifacts/model_registry
   model_name: "RetailSalesForecastingModel"
   status_file: artifacts/model_registry/status.txt
+
+model_monitoring:
+  root_dir: artifacts/model_monitoring
+  report_file: artifacts/model_monitoring/drift_report.html
+  reference_data_path: artifacts/data_ingestion/train.parquet
+  current_data_path: logs/predictions.parquet
+  drift_threshold: 0.3

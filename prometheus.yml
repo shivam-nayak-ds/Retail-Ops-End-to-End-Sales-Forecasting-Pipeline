@@ -1,7 +1,9 @@
 global:
-  scrape_interval: 15s # How often to scrape targets by default.
+  scrape_interval: 5s # Fast updates for real-time monitoring
+  evaluation_interval: 5s
 
 scrape_configs:
-  - job_name: "retail-forecasting-api"
+  - job_name: 'retail_ops_api'
+    metrics_path: '/metrics'
     static_configs:
-      - targets: ["host.docker.internal:8000"] # host.docker.internal allows docker containers to access host ports
+      - targets: ['api:8000'] # Matches the service name in docker-compose

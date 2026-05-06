@@ -1,4 +1,23 @@
+version: '3.8'
+
 services:
+  # 1. Retail Forecasting API
+  api:
+    build: .
+    container_name: retail_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./src:/app/src
+    restart: always
+    networks:
+      - retail_network
+
+  # 2. Prometheus (Metrics Collector)
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -6,8 +25,13 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
-    restart: always
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - retail_network
 
+  # 3. Grafana (Visualization Dashboard)
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -15,6 +39,11 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
-    restart: always
     depends_on:
       - prometheus
+    networks:
+      - retail_network
+
+networks:
+  retail_network:
+    driver: bridge

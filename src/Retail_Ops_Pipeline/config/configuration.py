@@ -9,7 +9,8 @@ from Retail_Ops_Pipeline.entity.config_entity import (
     DataTransformationConfig,
     ModelTrainerConfig,
     ModelEvaluationConfig,
-    ModelRegistryConfig
+    ModelRegistryConfig,
+    ModelMonitoringConfig
 )
 
 class ConfigurationManager:
@@ -117,3 +118,18 @@ class ConfigurationManager:
         )
 
         return model_registry_config
+
+    def get_model_monitoring_config(self) -> ModelMonitoringConfig:
+        config = self.config.model_monitoring
+
+        create_directories([config.root_dir])
+
+        model_monitoring_config = ModelMonitoringConfig(
+            root_dir=Path(config.root_dir),
+            report_file=Path(config.report_file),
+            reference_data_path=Path(config.reference_data_path),
+            current_data_path=Path(config.current_data_path),
+            drift_threshold=config.drift_threshold
+        )
+
+        return model_monitoring_config
