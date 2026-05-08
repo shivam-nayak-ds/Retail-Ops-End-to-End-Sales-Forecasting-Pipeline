@@ -1,19 +1,8 @@
-# PROVIDER CONFIGURATION
 provider "aws" {
-  region = "us-east-1"
+  region = "ap-south-1"
 }
 
-# S3 BUCKET FOR MODEL ARTIFACTS (DVC REMOTE)
-resource "aws_s3_bucket" "model_artifacts" {
-  bucket = "retail-ops-model-artifacts-001"
-  acl    = "private"
 
-  tags = {
-    Name        = "Model Artifact Storage"
-    Environment = "Production"
-    Project     = "Retail-Ops-Forecasting"
-  }
-}
 
 # SECURITY GROUP FOR EC2
 resource "aws_security_group" "retail_sg" {
@@ -56,11 +45,22 @@ resource "aws_security_group" "retail_sg" {
   }
 }
 
+# FETCH LATEST UBUNTU 22.04 AMI
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+}
+
 # EC2 INSTANCE FOR DOCKER DEPLOYMENT
 resource "aws_instance" "retail_app_server" {
-  ami           = "ami-0c7217cdde317cfec" # Ubuntu 22.04 LTS (us-east-1)
+  ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.micro"
-  key_name      = "retail-ops-key" # Assumes you have this key pair in AWS
+  key_name      = "ml-key" 
 
   vpc_security_group_ids = [aws_security_group.retail_sg.id]
 
@@ -71,6 +71,10 @@ resource "aws_instance" "retail_app_server" {
 
   user_data = <<-EOF
               #!/bin/bash
+              sudo fallocate -l 4G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
               sudo apt-get update
               sudo apt-get install -y docker.io docker-compose git
               sudo systemctl start docker

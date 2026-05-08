@@ -27,9 +27,9 @@ The system is deployed on **AWS EC2 (Mumbai Region)** via Docker Compose.
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| **FastAPI Docs** | [`http://13.200.254.145:8000/docs`](http://13.200.254.145:8000/docs) | Interactive Swagger UI — test all endpoints live |
-| **Grafana Dashboard** | [`http://13.200.254.145:3000`](http://13.200.254.145:3000) | Real-time monitoring (Login: `admin` / `admin`) |
-| **Streamlit UI** | [`http://13.200.254.145:8501`](http://13.200.254.145:8501) | Interactive Frontend Dashboard for Sales Forecasting |
+| **FastAPI Docs** | [`http://65.2.132.208:8000/docs`](http://65.2.132.208:8000/docs) | Interactive Swagger UI — test all endpoints live |
+| **Grafana Dashboard** | [`http://65.2.132.208:3000`](http://65.2.132.208:3000) | Real-time monitoring (Login: `admin` / `admin`) |
+| **Streamlit UI** | [`http://65.2.132.208:8501`](http://65.2.132.208:8501) | Interactive Frontend Dashboard for Sales Forecasting |
 
 > *IPs are ephemeral. If links are down, the system can be redeployed in under 5 minutes using the included Terraform + Docker Compose configuration.*
 

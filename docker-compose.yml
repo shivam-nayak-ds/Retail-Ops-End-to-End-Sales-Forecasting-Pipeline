@@ -23,6 +23,24 @@ services:
       timeout: 10s
       retries: 3
 
+  # 1.5 Retail Frontend UI (Streamlit)
+  frontend:
+    build: .
+    container_name: retail_frontend
+    command: bash -c "pip install streamlit && streamlit run app_streamlit.py --server.port=8501 --server.address=0.0.0.0"
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    depends_on:
+      - api
+    restart: always
+    networks:
+      - retail_network
+
   # 2. Prometheus (Metrics Collector)
   prometheus:
     image: prom/prometheus:latest
