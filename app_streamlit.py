@@ -61,7 +61,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 </style>
 """, unsafe_allow_html=True)
 
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+API_URL = "http://13.200.254.145:8000"
 API_KEY = os.getenv("RETAIL_API_KEY", "retail-ops-elite-key-2024")
 HEADERS = {"X-API-KEY": API_KEY}
 
