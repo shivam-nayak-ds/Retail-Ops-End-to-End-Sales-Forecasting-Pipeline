@@ -5,7 +5,7 @@ import random
 import sys
 
 # API Configuration
-API_URL = "http://127.0.0.1:8000/predict"
+API_URL = "http://127.0.0.1:8000/forecast"
 
 def run_simulation(sample_count: int = 20):
     """
@@ -20,13 +20,17 @@ def run_simulation(sample_count: int = 20):
         samples = test_df.sample(sample_count).to_dict(orient="records")
         
         for i, sample in enumerate(samples):
+            # Clean data: Replace NaN with 0.0 for JSON compliance
+            sample = {k: (0.0 if pd.isna(v) else v) for k, v in sample.items()}
+
             # Synthetic drift injection: Scaling competition distance
             sample['CompetitionDistance'] = sample['CompetitionDistance'] * random.uniform(1.1, 1.5)
             
             print(f"[{i+1}/{sample_count}] Dispatching request for Store ID: {sample['Store']}")
             
             try:
-                response = requests.post(API_URL, json=[sample], timeout=10)
+                # Send single object, not a list
+                response = requests.post(API_URL, json=sample, timeout=10)
                 
                 if response.status_code == 200:
                     print(f"Request successful. Status: {response.json().get('status')}")

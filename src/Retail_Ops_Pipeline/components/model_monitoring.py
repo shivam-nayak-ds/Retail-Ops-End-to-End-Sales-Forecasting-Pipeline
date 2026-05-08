@@ -1,8 +1,8 @@
 import os
 import pandas as pd
-from evidently.report import Report
-from evidently.metric_preset import DataDriftPreset
-from evidently.ui.workspace.cloud import CloudWorkspace
+from evidently import Report
+from evidently.presets import DataDriftPreset
+from evidently.ui.workspace import CloudWorkspace
 from Retail_Ops_Pipeline.entity.config_entity import ModelMonitoringConfig
 from Retail_Ops_Pipeline.utils.logger import get_logger
 from dotenv import load_dotenv
@@ -38,7 +38,7 @@ class ModelMonitoring:
             logger.info(f"Analyzing drift across {len(common_cols)} features.")
 
             drift_report = Report(metrics=[DataDriftPreset()])
-            drift_report.run(
+            snapshot = drift_report.run(
                 reference_data=reference_df[common_cols], 
                 current_data=current_df[common_cols]
             )
@@ -48,7 +48,7 @@ class ModelMonitoring:
                 try:
                     logger.info("Synchronizing report with Evidently Cloud.")
                     ws = CloudWorkspace(token=self.api_key, url="https://app.evidently.cloud")
-                    ws.add_report(self.project_id, drift_report)
+                    ws.add_report(self.project_id, snapshot)
                     logger.info("Cloud synchronization successful.")
                 except Exception as cloud_e:
                     logger.error(f"Cloud synchronization failed: {str(cloud_e)}")
@@ -58,12 +58,22 @@ class ModelMonitoring:
             # Local Persistence
             report_path = str(self.config.report_file)
             os.makedirs(os.path.dirname(report_path), exist_ok=True)
-            drift_report.save_html(report_path)
+            snapshot.save_html(report_path)
             logger.info(f"Local report generated at: {report_path}")
             
-            result = drift_report.as_dict()
-            drift_share = result['metrics'][0]['result']['drift_share']
-            drifted_cols = result['metrics'][0]['result']['number_of_drifted_columns']
+            result = snapshot.dict()
+            
+            # Robust extraction of drift metrics
+            drift_share = 0.0
+            drifted_cols = 0
+            
+            for metric in result.get('metrics', []):
+                if metric.get('metric_name') == 'DatasetDriftMetric' or 'Drift' in metric.get('metric_name', ''):
+                    val = metric.get('value', {})
+                    if isinstance(val, dict):
+                        drift_share = val.get('share', val.get('drift_share', 0.0))
+                        drifted_cols = val.get('count', val.get('number_of_drifted_columns', 0))
+                        break
             
             logger.info(f"Analysis Complete: Drift Share = {drift_share:.4f}, Drifted Columns = {drifted_cols}")
             return drift_share, drifted_cols

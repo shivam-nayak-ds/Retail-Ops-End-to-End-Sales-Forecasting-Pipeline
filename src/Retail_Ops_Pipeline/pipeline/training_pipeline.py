@@ -8,6 +8,7 @@ from Retail_Ops_Pipeline.components.data_transformation import DataTransformatio
 from Retail_Ops_Pipeline.components.model_trainer import ModelTrainer
 from Retail_Ops_Pipeline.components.model_evaluation import ModelEvaluation
 from Retail_Ops_Pipeline.components.model_registry import ModelRegistry
+from Retail_Ops_Pipeline.genai.embeddings import create_vector_db
 
 logger = get_logger(__name__)
 
@@ -68,6 +69,11 @@ class TrainPipeline:
             model_registry = ModelRegistry(config=registry_config)
             registry_status = model_registry.initiate_model_registry()
             logger.info(f"Model Registry stage completed with status: {registry_status}")
+
+            # STAGE 7: Vector Database (RAG) Auto-Update
+            logger.info("RAG Vector DB Auto-Update initiated.")
+            create_vector_db()
+            logger.info("Vector DB updated with latest tabular context.")
 
             logger.info("Pipeline Execution Successful!")
 

@@ -1,4 +1,4 @@
-version: '3.8'
+# Docker Compose for Retail Ops MLOps Pipeline
 
 services:
   # 1. Retail Forecasting API
@@ -12,10 +12,16 @@ services:
     volumes:
       - ./models:/app/models
       - ./logs:/app/logs
-      - ./src:/app/src
+      - ./artifacts:/app/artifacts
+      - ./data:/app/data
     restart: always
     networks:
       - retail_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # 2. Prometheus (Metrics Collector)
   prometheus:
@@ -23,13 +29,18 @@ services:
     container_name: prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
     ports:
       - "9090:9090"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    depends_on:
+      - api
     networks:
       - retail_network
+    restart: always
 
   # 3. Grafana (Visualization Dashboard)
   grafana:
@@ -39,11 +50,21 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/etc/grafana/dashboards
     depends_on:
       - prometheus
     networks:
       - retail_network
+    restart: always
 
 networks:
   retail_network:
     driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:

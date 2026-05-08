@@ -1,0 +1,31 @@
+# Git
+.git
+.gitignore
+
+# Python
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+
+# Environment
+.env
+
+# Data & Models (Keep these out of the image! Mount them via volumes instead)
+data/
+mlruns/
+artifacts/
+models/
+logs/
+scratch/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Infrastructure
+terraform/
+grafana/
+.github/
+docker/

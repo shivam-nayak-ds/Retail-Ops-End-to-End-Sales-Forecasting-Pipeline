@@ -193,3 +193,7 @@ terraform/.terraform.lock.hcl
 # Docker volumes
 grafana_data/
 prometheus_data/
+
+# Security Credentials
+*.pem
+ml-key.pem

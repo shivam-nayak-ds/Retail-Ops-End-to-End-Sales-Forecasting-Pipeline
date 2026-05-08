@@ -1,10 +1,19 @@
+import os
+from pathlib import Path
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import time
 import os
 import asyncio
 import pandas as pd
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, WebSocket, Security, Depends
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, field_validator
 from prometheus_fastapi_instrumentator import Instrumentator
 from contextlib import asynccontextmanager
@@ -14,6 +23,9 @@ from Retail_Ops_Pipeline.genai.rag_pipeline import RetailRAGPipeline
 from Retail_Ops_Pipeline.utils.logger import get_logger
 import shap
 from Retail_Ops_Pipeline.constants.config_entity import PREDICTION_LOG_PATH, TRAIN_PARQUET_PATH, PREPROCESSOR_PATH
+from prometheus_client import Gauge
+from Retail_Ops_Pipeline.components.model_monitoring import ModelMonitoring
+from Retail_Ops_Pipeline.entity.config_entity import ModelMonitoringConfig
 
 # Initialize logger 
 logger = get_logger("Retail_Ops_API")
@@ -72,6 +84,9 @@ class ForecastRangeInput(BaseModel):
     days: int = Field(7, ge=1, le=30, description="Number of days to forecast (1-30)")
     open_status: int = Field(1, ge=0, le=1, description="Default open status for the period")
     promo_active: int = Field(0, ge=0, le=1, description="Default promo status for the period")
+    store_type: str = Field('a', description="Store type (a, b, c, d)")
+    assortment: str = Field('a', description="Assortment level (a, b, c)")
+    competition_distance: float = Field(1270.0, description="Distance to nearest competitor (meters)")
 
     @field_validator('start_date')
     @classmethod
@@ -156,6 +171,38 @@ app = FastAPI(
 # Initialize Prometheus Monitoring
 Instrumentator().instrument(app).expose(app)
 
+# --- SECURITY: API Key Authentication ---
+API_KEY_NAME = "X-API-KEY"
+API_KEY = os.environ.get("RETAIL_API_KEY", "retail-ops-elite-key-2024")
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def get_api_key(api_key_header: str = Security(api_key_header)):
+    if api_key_header == API_KEY:
+        return api_key_header
+    raise HTTPException(status_code=403, detail="Forbidden: Invalid or Missing API Key")
+
+
+# ── Layer 1: FastAPI / HTTP Metrics (auto via Instrumentator above) ────────
+# (http_requests_total, http_request_duration_seconds auto-generated)
+
+# ── Layer 2: Model Metrics ─────────────────────────────────────────────────
+PREDICTION_VALUE    = Gauge('model_prediction_value',      'Latest sales prediction (€)',           ['store_id'])
+PREDICTION_LATENCY  = Gauge('model_inference_latency_seconds', 'Time taken for ML model inference', ['endpoint'])
+PREDICTION_COUNTER  = Gauge('model_total_predictions',      'Total predictions served',             [])
+
+# ── Layer 3: Drift Metrics ─────────────────────────────────────────────────
+DRIFT_SHARE         = Gauge('drift_share',                  'Fraction of features with drift (0-1)', [])
+DRIFTED_COLS        = Gauge('drift_drifted_columns_count',  'Number of features with drift',         [])
+DRIFT_RETRAIN_FLAG  = Gauge('drift_retraining_required',    '1 if retraining is required, else 0',  [])
+
+# ── Layer 4: RAG Metrics ───────────────────────────────────────────────────
+RAG_LATENCY         = Gauge('rag_inference_latency_seconds','Time taken for RAG + LLM call',        [])
+RAG_SUCCESS_COUNTER = Gauge('rag_success_total',            'Total successful RAG responses',        [])
+RAG_FAILURE_COUNTER = Gauge('rag_failure_total',            'Total failed RAG responses',            [])
+
+# Running counters
+_prediction_count = 0
+
 # --- 3. Business Logic Helper ---
 def log_prediction(data: pd.DataFrame):
     """Background task to log predictions for drift monitoring."""
@@ -171,7 +218,7 @@ def log_prediction(data: pd.DataFrame):
 
 # --- 4. The Elite Endpoints ---
 @app.post("/forecast/range", response_model=RangeForecastResponse)
-async def forecast_range(data: ForecastRangeInput):
+async def forecast_range(data: ForecastRangeInput, api_key: str = Depends(get_api_key)):
     """
     Strategic Endpoint: Performs Recursive Multi-Step Forecasting for a range of days.
     """
@@ -204,9 +251,9 @@ async def forecast_range(data: ForecastRangeInput):
                 'Promo': data.promo_active,
                 'StateHoliday': '0',
                 'SchoolHoliday': 0,
-                'StoreType': 'c', 
-                'Assortment': 'a',
-                'CompetitionDistance': 1270.0
+                'StoreType': data.store_type,
+                'Assortment': data.assortment,
+                'CompetitionDistance': data.competition_distance
             }
             step_input.update(current_lags)
             
@@ -245,7 +292,7 @@ async def forecast_range(data: ForecastRangeInput):
         raise HTTPException(status_code=500, detail=f"Strategic Engine Error: {str(e)}")
 
 @app.post("/forecast", response_model=ForecastResponse)
-async def forecast(data: SalesForecastInput, background_tasks: BackgroundTasks):
+async def forecast(data: SalesForecastInput, background_tasks: BackgroundTasks, api_key: str = Depends(get_api_key)):
     """
     Unified Endpoint: Performs ML Inference and RAG Analysis in Parallel.
     """
@@ -284,7 +331,15 @@ async def forecast(data: SalesForecastInput, background_tasks: BackgroundTasks):
         prediction_value = float(predictions[0])
         
         # 2. Run AI Analysis with the ACTUAL prediction
-        analysis = await loop.run_in_executor(None, app.state.rag_pipeline.explain_forecast, input_data, prediction_value)
+        rag_start = time.time()
+        try:
+            analysis = await loop.run_in_executor(None, app.state.rag_pipeline.explain_forecast, input_data, prediction_value)
+            RAG_LATENCY.set(time.time() - rag_start)
+            RAG_SUCCESS_COUNTER.set(RAG_SUCCESS_COUNTER._value.get() + 1)
+        except Exception as rag_e:
+            logger.warning(f"RAG analysis failed: {rag_e}")
+            analysis = "AI analysis unavailable."
+            RAG_FAILURE_COUNTER.set(RAG_FAILURE_COUNTER._value.get() + 1)
         
         # 3. Calculate SHAP Explanation (Robust check)
         top_features = {}
@@ -300,10 +355,21 @@ async def forecast(data: SalesForecastInput, background_tasks: BackgroundTasks):
         else:
             logger.warning("SHAP Explainer not available.")
 
+        # ── Record all Prometheus Metrics ──
+        global _prediction_count
+        elapsed = time.time() - start_time
+        _prediction_count += 1
+
+        # Layer 2: Model metrics
+        PREDICTION_VALUE.labels(store_id=str(store_id)).set(prediction_value)
+        PREDICTION_LATENCY.labels(endpoint='/forecast').set(elapsed)
+        PREDICTION_COUNTER.set(_prediction_count)
+
+        # Layer 4: RAG metrics (track separately)
         # Logging in background
         background_tasks.add_task(log_prediction, input_df)
 
-        latency = f"{time.time() - start_time:.2f}s"
+        latency = f"{elapsed:.2f}s"
 
         return ForecastResponse(
             store_id=store_id,
@@ -316,6 +382,46 @@ async def forecast(data: SalesForecastInput, background_tasks: BackgroundTasks):
     except Exception as e:
         logger.error(f"Inference Failure: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal AI Error: {str(e)}")
+
+@app.get("/monitor/drift")
+async def check_drift():
+    """
+    Evaluates statistical data drift between training baseline and live inference logs.
+    """
+    try:
+        if not os.path.exists(PREDICTION_LOG_PATH):
+            return {"status": "skipped", "message": "No live prediction logs available yet to calculate drift."}
+
+        # Setup Config
+        config = ModelMonitoringConfig(
+            root_dir=Path("artifacts/monitoring"),
+            reference_data_path=str(TRAIN_PARQUET_PATH),
+            current_data_path=str(PREDICTION_LOG_PATH),
+            report_file="artifacts/monitoring/drift_report.html",
+            drift_threshold=0.15
+        )
+        
+        monitor = ModelMonitoring(config)
+        
+        # Run calculation in background thread to avoid blocking API
+        loop = asyncio.get_event_loop()
+        drift_share, drifted_cols = await loop.run_in_executor(None, monitor.get_drift_report)
+        is_drifting = monitor.check_drift_status(drift_share)
+
+        # Layer 3: Record drift Prometheus metrics
+        DRIFT_SHARE.set(drift_share)
+        DRIFTED_COLS.set(drifted_cols)
+        DRIFT_RETRAIN_FLAG.set(1 if is_drifting else 0)
+
+        return {
+            "status": "success",
+            "drift_share": round(drift_share, 4),
+            "drifted_columns_count": drifted_cols,
+            "requires_retraining": is_drifting
+        }
+    except Exception as e:
+        logger.error(f"Drift Calculation Failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Monitoring Error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

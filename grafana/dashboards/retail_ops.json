@@ -1,0 +1,143 @@
+{
+  "id": null,
+  "uid": "retail-ops-main",
+  "title": "Retail Ops — Production MLOps Dashboard",
+  "tags": ["retail", "mlops", "production"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 2,
+  "refresh": "5s",
+  "panels": [
+
+    { "id": 100, "type": "row", "title": "Layer 1 — FastAPI Health", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "collapsed": false },
+
+    {
+      "id": 1, "type": "stat", "title": "Total HTTP Requests",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 1},
+      "targets": [{"expr": "sum(http_requests_total{job='retail_ops_api'})", "legendFormat": "Requests"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "blue", "value": null}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 2, "type": "stat", "title": "Error Rate (%)",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 1},
+      "targets": [{"expr": "sum(rate(http_requests_total{job='retail_ops_api',status=~'5..'}[5m])) / sum(rate(http_requests_total{job='retail_ops_api'}[5m])) * 100 or vector(0)", "legendFormat": "Error %"}],
+      "fieldConfig": {"defaults": {"unit": "percent", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 3, "type": "stat", "title": "p95 Response Latency",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 1},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job='retail_ops_api'}[5m])) by (le))", "legendFormat": "p95"}],
+      "fieldConfig": {"defaults": {"unit": "s", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 3}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Request Rate by Endpoint (req/s)",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 5},
+      "targets": [{"expr": "sum(rate(http_requests_total{job='retail_ops_api'}[1m])) by (handler)", "legendFormat": "{{handler}}"}],
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"mode": "palette-classic"}}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Response Time Percentiles (p50 / p95 / p99)",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 5},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job='retail_ops_api'}[5m])) by (le))", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job='retail_ops_api'}[5m])) by (le))", "legendFormat": "p95"},
+        {"expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job='retail_ops_api'}[5m])) by (le))", "legendFormat": "p99"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s", "color": {"mode": "palette-classic"}}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    { "id": 200, "type": "row", "title": "Layer 2 — Model Performance", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 11}, "collapsed": false },
+
+    {
+      "id": 6, "type": "stat", "title": "Total Predictions Served",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 12},
+      "targets": [{"expr": "model_total_predictions", "legendFormat": "Predictions"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "blue", "value": null}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 7, "type": "stat", "title": "Model Inference Latency (s)",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 12},
+      "targets": [{"expr": "model_inference_latency_seconds{endpoint='/forecast'}", "legendFormat": "Inference Time"}],
+      "fieldConfig": {"defaults": {"unit": "s", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 2}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Prediction Values Over Time (by Store)",
+      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 16},
+      "targets": [{"expr": "model_prediction_value", "legendFormat": "Store {{store_id}}"}],
+      "fieldConfig": {"defaults": {"unit": "currencyEUR", "color": {"mode": "palette-classic"}}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    { "id": 300, "type": "row", "title": "Layer 3 — Data Drift Monitoring", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23}, "collapsed": false },
+
+    {
+      "id": 9, "type": "gauge", "title": "Drift Share",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 24},
+      "targets": [{"expr": "drift_share", "legendFormat": "Drift Share"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1, "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.3}, {"color": "red", "value": 0.5}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 10, "type": "stat", "title": "Drifted Feature Columns",
+      "gridPos": {"h": 3, "w": 6, "x": 6, "y": 24},
+      "targets": [{"expr": "drift_drifted_columns_count", "legendFormat": "Drifted Columns"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 3}, {"color": "red", "value": 6}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 11, "type": "stat", "title": "Retraining Required",
+      "gridPos": {"h": 3, "w": 6, "x": 6, "y": 27},
+      "targets": [{"expr": "drift_retraining_required", "legendFormat": "Retrain Flag"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "NO", "color": "green"}, "1": {"text": "YES", "color": "red"}}}], "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Drift Share Trend Over Time",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 24},
+      "targets": [{"expr": "drift_share", "legendFormat": "Drift Share"}, {"expr": "vector(0.3)", "legendFormat": "Warning Threshold"}, {"expr": "vector(0.5)", "legendFormat": "Critical Threshold"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "color": {"mode": "palette-classic"}}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    { "id": 400, "type": "row", "title": "Layer 4 — RAG / LLM Engine", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 30}, "collapsed": false },
+
+    {
+      "id": 13, "type": "stat", "title": "RAG Inference Latency (s)",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 31},
+      "targets": [{"expr": "rag_inference_latency_seconds", "legendFormat": "RAG Latency"}],
+      "fieldConfig": {"defaults": {"unit": "s", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 2}, {"color": "red", "value": 5}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 14, "type": "stat", "title": "RAG Successful Responses",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 31},
+      "targets": [{"expr": "rag_success_total", "legendFormat": "Successes"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 15, "type": "stat", "title": "RAG Failures",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 31},
+      "targets": [{"expr": "rag_failure_total", "legendFormat": "Failures"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 16, "type": "timeseries", "title": "RAG Latency vs Model Latency",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 35},
+      "targets": [
+        {"expr": "rag_inference_latency_seconds", "legendFormat": "RAG (LLM Call)"},
+        {"expr": "model_inference_latency_seconds{endpoint='/forecast'}", "legendFormat": "Model (ML Inference)"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s", "color": {"mode": "palette-classic"}}},
+      "options": {"tooltip": {"mode": "multi"}}
+    }
+  ]
+}
